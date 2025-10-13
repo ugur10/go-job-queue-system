@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -15,6 +16,7 @@ type Handler func(context.Context, Job) error
 type WorkerConfig struct {
 	NumWorkers  int
 	BaseBackoff time.Duration
+	Logger      *slog.Logger
 }
 
 // WorkerPool coordinates a set of workers consuming jobs from the queue.
@@ -22,6 +24,7 @@ type WorkerPool struct {
 	queue    *Queue
 	handlers map[string]Handler
 	cfg      WorkerConfig
+	logger   *slog.Logger
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -39,6 +42,10 @@ func NewWorkerPool(q *Queue, handlers map[string]Handler, cfg WorkerConfig) *Wor
 	if cfg.BaseBackoff <= 0 {
 		cfg.BaseBackoff = 100 * time.Millisecond
 	}
+	logger := cfg.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
 
 	handlerCopy := make(map[string]Handler, len(handlers))
 	for k, v := range handlers {
@@ -49,6 +56,7 @@ func NewWorkerPool(q *Queue, handlers map[string]Handler, cfg WorkerConfig) *Wor
 		queue:    q,
 		handlers: handlerCopy,
 		cfg:      cfg,
+		logger:   logger,
 	}
 }
 
@@ -59,7 +67,7 @@ func (p *WorkerPool) Start(ctx context.Context) {
 
 		for i := 0; i < p.cfg.NumWorkers; i++ {
 			p.wg.Add(1)
-			go p.worker()
+			go p.worker(i)
 		}
 	})
 }
@@ -74,12 +82,17 @@ func (p *WorkerPool) Stop() {
 	})
 }
 
-func (p *WorkerPool) worker() {
+func (p *WorkerPool) worker(id int) {
 	defer p.wg.Done()
+
+	logger := p.logger.With(slog.Int("worker_id", id))
+	logger.Info("worker started")
+	defer logger.Info("worker stopped")
 
 	for {
 		select {
 		case <-p.ctx.Done():
+			logger.Debug("worker context done", slog.Any("error", p.ctx.Err()))
 			return
 		default:
 		}
@@ -87,8 +100,10 @@ func (p *WorkerPool) worker() {
 		job, err := p.queue.Reserve(p.ctx)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				logger.Debug("reserve terminated by context", slog.Any("error", err))
 				return
 			}
+			logger.Warn("reserve failed", slog.Any("error", err))
 			continue
 		}
 
@@ -98,10 +113,12 @@ func (p *WorkerPool) worker() {
 			if _, markErr := p.queue.MarkFailed(job.ID, recordErr); markErr != nil {
 				// Queue no longer tracks the job; nothing else we can do.
 			}
+			logger.Error("missing handler for job type", slog.String("job_type", job.Type), slog.String("job_id", job.ID))
 			continue
 		}
 
 		jobCtx, jobCancel := context.WithCancel(p.ctx)
+		logger.Info("processing job", slog.String("job_id", job.ID), slog.String("job_type", job.Type), slog.Int("attempt", job.Attempts), slog.Int("max_attempts", job.MaxAttempts))
 		handleErr := handler(jobCtx, *job)
 		jobCancel()
 
@@ -110,6 +127,7 @@ func (p *WorkerPool) worker() {
 				if _, markErr := p.queue.MarkFailed(job.ID, handleErr); markErr != nil {
 					// ignore best-effort error
 				}
+				logger.Error("job failed permanently", slog.String("job_id", job.ID), slog.String("job_type", job.Type), slog.Int("attempt", job.Attempts), slog.Int("max_attempts", job.MaxAttempts), slog.Any("error", handleErr))
 				continue
 			}
 
@@ -119,13 +137,19 @@ func (p *WorkerPool) worker() {
 				if _, markErr := p.queue.MarkFailed(job.ID, handleErr); markErr != nil {
 					// ignore best-effort error
 				}
+				logger.Error("job failed and could not be requeued", slog.String("job_id", job.ID), slog.String("job_type", job.Type), slog.Int("attempt", job.Attempts), slog.Any("error", requeueErr))
+				continue
 			}
+			logger.Warn("job failed; retry scheduled", slog.String("job_id", job.ID), slog.String("job_type", job.Type), slog.Int("attempt", job.Attempts), slog.Int("max_attempts", job.MaxAttempts), slog.Duration("backoff", delay), slog.Any("error", handleErr))
 			continue
 		}
 
 		if _, markErr := p.queue.MarkCompleted(job.ID); markErr != nil {
 			// best effort; queue might have been cleared.
+			logger.Warn("job completed but state update failed", slog.String("job_id", job.ID), slog.Any("error", markErr))
+			continue
 		}
+		logger.Info("job completed", slog.String("job_id", job.ID), slog.String("job_type", job.Type), slog.Int("attempt", job.Attempts))
 	}
 }
 

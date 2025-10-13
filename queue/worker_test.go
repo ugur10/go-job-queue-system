@@ -3,6 +3,8 @@ package queue
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -10,6 +12,7 @@ import (
 
 func TestWorkerPoolProcessesJob(t *testing.T) {
 	q := NewQueue(Config{})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	processed := make(chan Job, 1)
 	pool := NewWorkerPool(q, map[string]Handler{
@@ -17,7 +20,7 @@ func TestWorkerPoolProcessesJob(t *testing.T) {
 			processed <- job
 			return nil
 		},
-	}, WorkerConfig{NumWorkers: 2, BaseBackoff: 10 * time.Millisecond})
+	}, WorkerConfig{NumWorkers: 2, BaseBackoff: 10 * time.Millisecond, Logger: logger})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -40,6 +43,7 @@ func TestWorkerPoolProcessesJob(t *testing.T) {
 
 func TestWorkerPoolRetriesUntilSuccess(t *testing.T) {
 	q := NewQueue(Config{})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	var mu sync.Mutex
 	attemptLog := make([]int, 0, 3)
@@ -55,7 +59,7 @@ func TestWorkerPoolRetriesUntilSuccess(t *testing.T) {
 			}
 			return nil
 		},
-	}, WorkerConfig{NumWorkers: 1, BaseBackoff: 20 * time.Millisecond})
+	}, WorkerConfig{NumWorkers: 1, BaseBackoff: 20 * time.Millisecond, Logger: logger})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -90,12 +94,13 @@ func TestWorkerPoolRetriesUntilSuccess(t *testing.T) {
 
 func TestWorkerPoolMarksFailedAfterExhaustingRetries(t *testing.T) {
 	q := NewQueue(Config{})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	pool := NewWorkerPool(q, map[string]Handler{
 		"fail": func(ctx context.Context, job Job) error {
 			return errors.New("boom")
 		},
-	}, WorkerConfig{NumWorkers: 1, BaseBackoff: 10 * time.Millisecond})
+	}, WorkerConfig{NumWorkers: 1, BaseBackoff: 10 * time.Millisecond, Logger: logger})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
