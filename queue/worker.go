@@ -82,6 +82,7 @@ func (p *WorkerPool) Stop() {
 	})
 }
 
+// worker loops, reserving jobs from the queue until the shared context is canceled.
 func (p *WorkerPool) worker(id int) {
 	defer p.wg.Done()
 
@@ -157,6 +158,7 @@ func (p *WorkerPool) backoff(attempt int) time.Duration {
 	if attempt < 1 {
 		attempt = 1
 	}
+	// Exponential backoff: double the delay for each successive attempt.
 	multiplier := 1 << (attempt - 1)
 	return time.Duration(multiplier) * p.cfg.BaseBackoff
 }

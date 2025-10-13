@@ -23,6 +23,7 @@ func main() {
 	logLevel := flag.String("log-level", "info", "log verbosity (debug, info, warn, error)")
 	flag.Parse()
 
+	// Build the root logger once so every component shares the same configuration.
 	logger, err := buildLogger(*logLevel, *logFormat)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "invalid logging configuration: %v\n", err)
@@ -40,6 +41,7 @@ func main() {
 	pool.Start(ctx)
 	defer pool.Stop()
 
+	// Treat any remaining arguments as CLI subcommands (submit/status/jobs).
 	args := flag.Args()
 	if len(args) > 0 {
 		if err := runCommand(ctx, q, args); err != nil {
@@ -156,6 +158,7 @@ func submitCommand(ctx context.Context, q *queue.Queue, jobType, payload string)
 		fmt.Printf("last error: %s\n", final.LastError)
 	}
 	if final.IsJSONPayload() {
+		// Mirror the worker-side insight so the CLI caller knows the payload shape we detected.
 		fmt.Println("job payload is JSON")
 	}
 	return nil
