@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// TestSubmitStoresJobAndStats ensures submitted jobs are persisted and counted.
+// Ensures submitted jobs are persisted and counted.
 func TestSubmitStoresJobAndStats(t *testing.T) {
 	q := NewQueue(Config{})
 
@@ -29,7 +29,7 @@ func TestSubmitStoresJobAndStats(t *testing.T) {
 	}
 }
 
-// TestSubmitCopiesPayload verifies the queue protects internal payload buffers.
+// Verifies the queue protects internal payload buffers.
 func TestSubmitCopiesPayload(t *testing.T) {
 	q := NewQueue(Config{})
 
@@ -50,7 +50,7 @@ func TestSubmitCopiesPayload(t *testing.T) {
 	}
 }
 
-// TestReserveFifoOrdering confirms FIFO semantics and attempt increments.
+// Confirms FIFO semantics and attempt increments.
 func TestReserveFifoOrdering(t *testing.T) {
 	q := NewQueue(Config{})
 
@@ -77,7 +77,7 @@ func TestReserveFifoOrdering(t *testing.T) {
 	}
 }
 
-// TestReserveBlocksUntilJobArrives covers the wait-notify path for idle workers.
+// Covers the wait-notify path for idle workers.
 func TestReserveBlocksUntilJobArrives(t *testing.T) {
 	q := NewQueue(Config{})
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -117,7 +117,7 @@ func TestReserveBlocksUntilJobArrives(t *testing.T) {
 	}
 }
 
-// TestReserveHonoursContextCancellation ensures contexts abort cleanly.
+// Ensures contexts abort cleanly.
 func TestReserveHonoursContextCancellation(t *testing.T) {
 	q := NewQueue(Config{})
 
@@ -133,7 +133,7 @@ func TestReserveHonoursContextCancellation(t *testing.T) {
 	}
 }
 
-// TestMarkStateUpdatesStats checks state transitions feed into Stats.
+// Checks state transitions feed into Stats.
 func TestMarkStateUpdatesStats(t *testing.T) {
 	q := NewQueue(Config{})
 
@@ -170,7 +170,7 @@ func TestMarkStateUpdatesStats(t *testing.T) {
 	}
 }
 
-// TestSubmitRequiresJobType guards against anonymous job submissions.
+// Guards against anonymous job submissions.
 func TestSubmitRequiresJobType(t *testing.T) {
 	q := NewQueue(Config{})
 	_, err := q.Submit(context.Background(), "", nil)
@@ -179,7 +179,7 @@ func TestSubmitRequiresJobType(t *testing.T) {
 	}
 }
 
-// TestRequeueDelay validates delayed retries and attempt counters.
+// Validates delayed retries and attempt counters.
 func TestRequeueDelay(t *testing.T) {
 	q := NewQueue(Config{})
 
@@ -242,7 +242,7 @@ func TestRequeueDelay(t *testing.T) {
 	}
 }
 
-// TestJobsSnapshot verifies job listings are in order and defensive copied.
+// Verifies job listings are in order and defensive copied.
 func TestJobsSnapshot(t *testing.T) {
 	q := NewQueue(Config{})
 
@@ -265,7 +265,7 @@ func TestJobsSnapshot(t *testing.T) {
 	}
 }
 
-// TestJobJSONHelpers ensures Job exposes convenient JSON helpers.
+// Ensures Job exposes convenient JSON helpers.
 func TestJobJSONHelpers(t *testing.T) {
 	job := Job{Payload: []byte(`{"name":"gopher"}`)}
 	if !job.IsJSONPayload() {

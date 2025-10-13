@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// TestWorkerPoolProcessesJob ensures jobs are executed and marked complete.
+// Ensures jobs are executed and marked complete.
 func TestWorkerPoolProcessesJob(t *testing.T) {
 	q := NewQueue(Config{})
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -42,7 +42,7 @@ func TestWorkerPoolProcessesJob(t *testing.T) {
 	assertStateEventually(t, q, job.ID, JobCompleted, time.Second)
 }
 
-// TestWorkerPoolRetriesUntilSuccess exercises the retry logic until success.
+// Exercises the retry logic until success.
 func TestWorkerPoolRetriesUntilSuccess(t *testing.T) {
 	q := NewQueue(Config{})
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -94,7 +94,7 @@ func TestWorkerPoolRetriesUntilSuccess(t *testing.T) {
 	}
 }
 
-// TestWorkerPoolMarksFailedAfterExhaustingRetries ensures we raise a failed state after max attempts.
+// Ensures we raise a failed state after max attempts.
 func TestWorkerPoolMarksFailedAfterExhaustingRetries(t *testing.T) {
 	q := NewQueue(Config{})
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -129,7 +129,7 @@ func TestWorkerPoolMarksFailedAfterExhaustingRetries(t *testing.T) {
 	}
 }
 
-// assertStateEventually polls the queue until the job reaches the requested state or times out.
+// Polls the queue until the job reaches the requested state or times out.
 func assertStateEventually(t *testing.T, q *Queue, jobID string, state JobState, timeout time.Duration) {
 	t.Helper()
 
