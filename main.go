@@ -18,19 +18,19 @@ import (
 	"job-queue-go/queue"
 )
 
-// main wires the CLI entry point, configures logging, and starts the worker pool.
+// Orchestrates the CLI entry point, configures logging, and starts the worker pool.
 func main() {
 	logFormat := flag.String("log-format", "text", "log output format (text or json)")
 	logLevel := flag.String("log-level", "info", "log verbosity (debug, info, warn, error)")
 	flag.Parse()
 
-	// Build the root logger once so every component shares the same configuration.
+	// Builds the root logger once so every component shares the same configuration.
 	logger, err := buildLogger(*logLevel, *logFormat)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "invalid logging configuration: %v\n", err)
 		os.Exit(1)
 	}
-	// Make the configured logger globally available so queue workers share the same output sink.
+	// Shares the configured logger globally so queue workers use the same output sink.
 	slog.SetDefault(logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -42,7 +42,7 @@ func main() {
 	pool.Start(ctx)
 	defer pool.Stop()
 
-	// Treat any remaining arguments as CLI subcommands (submit/status/jobs).
+	// Treats any remaining arguments as CLI subcommands (submit/status/jobs).
 	args := flag.Args()
 	if len(args) > 0 {
 		if err := runCommand(ctx, q, args); err != nil {
@@ -55,7 +55,7 @@ func main() {
 	runREPL(ctx, q)
 }
 
-// runCommand handles single-shot invocations such as "submit" or "status".
+// Handles single-shot invocations such as "submit" or "status".
 func runCommand(ctx context.Context, q *queue.Queue, args []string) error {
 	switch args[0] {
 	case "submit":
@@ -79,7 +79,7 @@ func runCommand(ctx context.Context, q *queue.Queue, args []string) error {
 	}
 }
 
-// runREPL provides an interactive shell for exploring the queue.
+// Provides an interactive shell for exploring the queue.
 func runREPL(ctx context.Context, q *queue.Queue) {
 	fmt.Println("Job queue CLI ready. Commands: submit <type> <payload>, status, jobs, help, exit")
 	scanner := bufio.NewScanner(os.Stdin)
@@ -118,7 +118,7 @@ func runREPL(ctx context.Context, q *queue.Queue) {
 	}
 }
 
-// handleSubmitLine parses a free-form submit command from the REPL.
+// Parses a free-form submit command from the REPL.
 func handleSubmitLine(ctx context.Context, q *queue.Queue, line string) error {
 	trimmed := strings.TrimSpace(line[len("submit"):])
 	if trimmed == "" {
@@ -135,7 +135,7 @@ func handleSubmitLine(ctx context.Context, q *queue.Queue, line string) error {
 	return submitCommand(ctx, q, jobType, payload)
 }
 
-// submitCommand normalises payloads, enqueues the job, and waits for its result.
+// Normalises payloads, enqueues the job, and waits for its result.
 func submitCommand(ctx context.Context, q *queue.Queue, jobType, payload string) error {
 	payloadBytes, isJSON, err := preparePayload(payload)
 	if err != nil {
@@ -163,7 +163,7 @@ func submitCommand(ctx context.Context, q *queue.Queue, jobType, payload string)
 		fmt.Printf("last error: %s\n", final.LastError)
 	}
 	if final.IsJSONPayload() {
-		// Mirror the worker-side insight so the CLI caller knows the payload shape we detected.
+		// Mirrors the worker-side insight so the CLI caller knows the payload shape we detected.
 		fmt.Println("job payload is JSON")
 	}
 	return nil
