@@ -262,11 +262,13 @@ func (q *Queue) Jobs() []Job {
 	return jobs
 }
 
+// signalLocked wakes any waiting workers after the pending queue changes.
 func (q *Queue) signalLocked() {
 	close(q.notifyCh)
 	q.notifyCh = make(chan struct{})
 }
 
+// enqueueLocked inserts a job back into the pending slice respecting ReadyAt ordering.
 func (q *Queue) enqueueLocked(job *Job) {
 	q.pending = append(q.pending, job)
 	sort.SliceStable(q.pending, func(i, j int) bool {
@@ -278,6 +280,7 @@ func (q *Queue) enqueueLocked(job *Job) {
 	q.signalLocked()
 }
 
+// stopTimer safely stops and drains a timer so it can be reused.
 func stopTimer(timer **time.Timer) {
 	if *timer == nil {
 		return

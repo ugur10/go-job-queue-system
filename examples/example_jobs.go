@@ -23,6 +23,7 @@ func Handlers() map[string]queue.Handler {
 	}
 }
 
+// printMessage logs textual or JSON payloads to the console to illustrate handler behaviour.
 func printMessage(ctx context.Context, job queue.Job) error {
 	if job.IsJSONPayload() {
 		var payload any
@@ -49,6 +50,7 @@ func printMessage(ctx context.Context, job queue.Job) error {
 	}
 }
 
+// occasionalFailure simulates a flaky handler to exercise the retry and backoff flow.
 func occasionalFailure(ctx context.Context, job queue.Job) error {
 	fmt.Printf("[flaky] job %s attempt %d\n", job.ID, job.Attempts)
 

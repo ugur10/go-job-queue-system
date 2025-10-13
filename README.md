@@ -53,3 +53,7 @@ Exiting...
 Available job types are defined under `examples/` and can be expanded with your own handlers.
 
 Pass `-log-format=json` or `-log-level=debug` in front of commands when you need different verbosity or machine-readable logs.
+
+## License
+
+Released under the [MIT License](https://opensource.org/licenses/MIT). See `LICENSE` for full text.

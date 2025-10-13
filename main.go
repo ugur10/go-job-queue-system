@@ -18,6 +18,7 @@ import (
 	"job-queue-go/queue"
 )
 
+// main wires the CLI entry point, configures logging, and starts the worker pool.
 func main() {
 	logFormat := flag.String("log-format", "text", "log output format (text or json)")
 	logLevel := flag.String("log-level", "info", "log verbosity (debug, info, warn, error)")
@@ -54,6 +55,7 @@ func main() {
 	runREPL(ctx, q)
 }
 
+// runCommand handles single-shot invocations such as "submit" or "status".
 func runCommand(ctx context.Context, q *queue.Queue, args []string) error {
 	switch args[0] {
 	case "submit":
@@ -77,6 +79,7 @@ func runCommand(ctx context.Context, q *queue.Queue, args []string) error {
 	}
 }
 
+// runREPL provides an interactive shell for exploring the queue.
 func runREPL(ctx context.Context, q *queue.Queue) {
 	fmt.Println("Job queue CLI ready. Commands: submit <type> <payload>, status, jobs, help, exit")
 	scanner := bufio.NewScanner(os.Stdin)
@@ -115,6 +118,7 @@ func runREPL(ctx context.Context, q *queue.Queue) {
 	}
 }
 
+// handleSubmitLine parses a free-form submit command from the REPL.
 func handleSubmitLine(ctx context.Context, q *queue.Queue, line string) error {
 	trimmed := strings.TrimSpace(line[len("submit"):])
 	if trimmed == "" {
@@ -131,6 +135,7 @@ func handleSubmitLine(ctx context.Context, q *queue.Queue, line string) error {
 	return submitCommand(ctx, q, jobType, payload)
 }
 
+// submitCommand normalises payloads, enqueues the job, and waits for its result.
 func submitCommand(ctx context.Context, q *queue.Queue, jobType, payload string) error {
 	payloadBytes, isJSON, err := preparePayload(payload)
 	if err != nil {
@@ -216,6 +221,7 @@ func preparePayload(raw string) ([]byte, bool, error) {
 	return []byte(raw), false, nil
 }
 
+// looksLikeJSON performs a light heuristic so we can surface JSON parsing errors early.
 func looksLikeJSON(s string) bool {
 	if s == "" {
 		return false
@@ -228,6 +234,7 @@ func looksLikeJSON(s string) bool {
 	}
 }
 
+// waitForTerminalState polls the queue until the job completes, fails, or times out.
 func waitForTerminalState(ctx context.Context, q *queue.Queue, jobID string, timeout time.Duration) (queue.Job, error) {
 	deadline := time.Now().Add(timeout)
 	ticker := time.NewTicker(100 * time.Millisecond)
@@ -249,11 +256,13 @@ func waitForTerminalState(ctx context.Context, q *queue.Queue, jobID string, tim
 	}
 }
 
+// printStatus reports high-level job counts.
 func printStatus(q *queue.Queue) {
 	stats := q.Stats()
 	fmt.Printf("Queue stats - pending:%d processing:%d completed:%d failed:%d\n", stats.Pending, stats.Processing, stats.Completed, stats.Failed)
 }
 
+// printJobs lists known jobs with helpful markers for JSON payloads and errors.
 func printJobs(q *queue.Queue) {
 	jobs := q.Jobs()
 	if len(jobs) == 0 {
@@ -273,6 +282,7 @@ func printJobs(q *queue.Queue) {
 	}
 }
 
+// printHelp summarises supported commands and runtime flags.
 func printHelp() {
 	fmt.Println("Commands:")
 	fmt.Println("  submit <type> <payload>  - Enqueue a job and wait for completion")
