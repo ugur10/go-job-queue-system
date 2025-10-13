@@ -242,6 +242,26 @@ type Stats struct {
 	Failed     int
 }
 
+// Jobs returns a snapshot of all tracked jobs ordered by creation time.
+func (q *Queue) Jobs() []Job {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	jobs := make([]Job, 0, len(q.jobs))
+	for _, job := range q.jobs {
+		jobs = append(jobs, job.clone())
+	}
+
+	sort.SliceStable(jobs, func(i, j int) bool {
+		if jobs[i].CreatedAt.Equal(jobs[j].CreatedAt) {
+			return jobs[i].ID < jobs[j].ID
+		}
+		return jobs[i].CreatedAt.Before(jobs[j].CreatedAt)
+	})
+
+	return jobs
+}
+
 func (q *Queue) signalLocked() {
 	close(q.notifyCh)
 	q.notifyCh = make(chan struct{})

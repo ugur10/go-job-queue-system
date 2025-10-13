@@ -233,3 +233,25 @@ func TestRequeueDelay(t *testing.T) {
 		t.Fatalf("reserve did not return after delay")
 	}
 }
+
+func TestJobsSnapshot(t *testing.T) {
+	q := NewQueue(Config{})
+
+	job1, _ := q.Submit(context.Background(), "one", []byte("payload-1"))
+	time.Sleep(time.Millisecond) // ensure ordering difference
+	job2, _ := q.Submit(context.Background(), "two", []byte("payload-2"))
+
+	jobs := q.Jobs()
+	if len(jobs) != 2 {
+		t.Fatalf("expected 2 jobs, got %d", len(jobs))
+	}
+	if jobs[0].ID != job1.ID || jobs[1].ID != job2.ID {
+		t.Fatalf("unexpected job order: %+v", jobs)
+	}
+
+	jobs[0].Payload[0] = 'X'
+	snapshot, _ := q.Get(job1.ID)
+	if string(snapshot.Payload) != "payload-1" {
+		t.Fatalf("expected payload copy, got %q", string(snapshot.Payload))
+	}
+}
