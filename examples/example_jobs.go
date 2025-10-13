@@ -2,6 +2,7 @@ package examples
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -23,11 +24,21 @@ func Handlers() map[string]queue.Handler {
 }
 
 func printMessage(ctx context.Context, job queue.Job) error {
-	message := string(job.Payload)
-	if message == "" {
-		message = "<empty>"
+	if job.IsJSONPayload() {
+		var payload any
+		if err := job.UnmarshalPayload(&payload); err != nil {
+			fmt.Printf("[print] job %s json_error=%v\n", job.ID, err)
+		} else {
+			pretty, _ := json.MarshalIndent(payload, "", "  ")
+			fmt.Printf("[print] job %s json_payload=\n%s\n", job.ID, string(pretty))
+		}
+	} else {
+		message := string(job.Payload)
+		if message == "" {
+			message = "<empty>"
+		}
+		fmt.Printf("[print] job %s payload=%q\n", job.ID, message)
 	}
-	fmt.Printf("[print] job %s payload=%q\n", job.ID, message)
 
 	// Simulate some work while remaining cancellable.
 	select {

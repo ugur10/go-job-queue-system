@@ -255,3 +255,26 @@ func TestJobsSnapshot(t *testing.T) {
 		t.Fatalf("expected payload copy, got %q", string(snapshot.Payload))
 	}
 }
+
+func TestJobJSONHelpers(t *testing.T) {
+	job := Job{Payload: []byte(`{"name":"gopher"}`)}
+	if !job.IsJSONPayload() {
+		t.Fatalf("expected payload to be recognized as JSON")
+	}
+
+	var decoded map[string]string
+	if err := job.UnmarshalPayload(&decoded); err != nil {
+		t.Fatalf("UnmarshalPayload failed: %v", err)
+	}
+	if decoded["name"] != "gopher" {
+		t.Fatalf("unexpected payload value: %+v", decoded)
+	}
+
+	job.Payload = []byte("plain text")
+	if job.IsJSONPayload() {
+		t.Fatalf("expected IsJSONPayload to be false")
+	}
+	if err := job.UnmarshalPayload(&decoded); !errors.Is(err, ErrPayloadNotJSON) {
+		t.Fatalf("expected ErrPayloadNotJSON, got %v", err)
+	}
+}

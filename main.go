@@ -3,8 +3,10 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
@@ -19,8 +21,12 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+
 	q := queue.NewQueue(queue.Config{})
-	pool := queue.NewWorkerPool(q, examples.Handlers(), queue.WorkerConfig{NumWorkers: 2, BaseBackoff: 200 * time.Millisecond})
+	workerLogger := logger.With(slog.String("component", "worker_pool"))
+	pool := queue.NewWorkerPool(q, examples.Handlers(), queue.WorkerConfig{NumWorkers: 2, BaseBackoff: 200 * time.Millisecond, Logger: workerLogger})
 	pool.Start(ctx)
 	defer pool.Stop()
 
@@ -114,12 +120,21 @@ func handleSubmitLine(ctx context.Context, q *queue.Queue, line string) error {
 }
 
 func submitCommand(ctx context.Context, q *queue.Queue, jobType, payload string) error {
-	job, err := q.Submit(ctx, jobType, []byte(payload))
+	payloadBytes, isJSON, err := preparePayload(payload)
+	if err != nil {
+		return err
+	}
+
+	job, err := q.Submit(ctx, jobType, payloadBytes)
 	if err != nil {
 		return err
 	}
 
 	fmt.Printf("enqueued job %s (type=%s)\n", job.ID, job.Type)
+	if isJSON {
+		fmt.Println("payload parsed as JSON")
+	}
+	slog.Default().Info("job submitted", slog.String("job_id", job.ID), slog.String("job_type", job.Type), slog.Bool("payload_json", isJSON))
 
 	final, err := waitForTerminalState(ctx, q, job.ID, 5*time.Second)
 	if err != nil {
@@ -130,7 +145,42 @@ func submitCommand(ctx context.Context, q *queue.Queue, jobType, payload string)
 	if final.LastError != "" {
 		fmt.Printf("last error: %s\n", final.LastError)
 	}
+	if final.IsJSONPayload() {
+		fmt.Println("job payload is JSON")
+	}
 	return nil
+}
+
+func preparePayload(raw string) ([]byte, bool, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return []byte{}, false, nil
+	}
+
+	var js any
+	if err := json.Unmarshal([]byte(trimmed), &js); err == nil {
+		normalized, err := json.Marshal(js)
+		if err != nil {
+			return nil, false, err
+		}
+		return normalized, true, nil
+	} else if looksLikeJSON(trimmed) {
+		return nil, false, fmt.Errorf("invalid JSON payload: %w", err)
+	}
+
+	return []byte(raw), false, nil
+}
+
+func looksLikeJSON(s string) bool {
+	if s == "" {
+		return false
+	}
+	switch s[0] {
+	case '{', '[', '"':
+		return true
+	default:
+		return false
+	}
 }
 
 func waitForTerminalState(ctx context.Context, q *queue.Queue, jobID string, timeout time.Duration) (queue.Job, error) {
@@ -168,6 +218,9 @@ func printJobs(q *queue.Queue) {
 
 	for _, job := range jobs {
 		line := fmt.Sprintf("[%s] id=%s type=%s attempts=%d", job.State, job.ID, job.Type, job.Attempts)
+		if job.IsJSONPayload() {
+			line += " payload=json"
+		}
 		if job.LastError != "" {
 			line += fmt.Sprintf(" last_error=%q", job.LastError)
 		}
@@ -182,4 +235,5 @@ func printHelp() {
 	fmt.Println("  jobs                     - List all tracked jobs")
 	fmt.Println("  help                     - Display this help message")
 	fmt.Println("  exit                     - Quit the CLI")
+	fmt.Println("Payloads: provide plain strings or JSON (objects/arrays must be quoted in the shell)")
 }
