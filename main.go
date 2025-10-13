@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
@@ -18,11 +19,20 @@ import (
 )
 
 func main() {
+	logFormat := flag.String("log-format", "text", "log output format (text or json)")
+	logLevel := flag.String("log-level", "info", "log verbosity (debug, info, warn, error)")
+	flag.Parse()
+
+	logger, err := buildLogger(*logLevel, *logFormat)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "invalid logging configuration: %v\n", err)
+		os.Exit(1)
+	}
+	// Make the configured logger globally available so queue workers share the same output sink.
+	slog.SetDefault(logger)
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	slog.SetDefault(logger)
 
 	q := queue.NewQueue(queue.Config{})
 	workerLogger := logger.With(slog.String("component", "worker_pool"))
@@ -30,7 +40,7 @@ func main() {
 	pool.Start(ctx)
 	defer pool.Stop()
 
-	args := os.Args[1:]
+	args := flag.Args()
 	if len(args) > 0 {
 		if err := runCommand(ctx, q, args); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -151,6 +161,38 @@ func submitCommand(ctx context.Context, q *queue.Queue, jobType, payload string)
 	return nil
 }
 
+// buildLogger prepares a slog.Logger using the caller's desired verbosity and encoding.
+func buildLogger(levelStr, formatStr string) (*slog.Logger, error) {
+	var level slog.Level
+	switch strings.ToLower(levelStr) {
+	case "debug":
+		level = slog.LevelDebug
+	case "info":
+		level = slog.LevelInfo
+	case "warn", "warning":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	default:
+		return nil, fmt.Errorf("unsupported log level %q", levelStr)
+	}
+
+	opts := &slog.HandlerOptions{Level: level}
+
+	var handler slog.Handler
+	switch strings.ToLower(formatStr) {
+	case "text":
+		handler = slog.NewTextHandler(os.Stdout, opts)
+	case "json":
+		handler = slog.NewJSONHandler(os.Stdout, opts)
+	default:
+		return nil, fmt.Errorf("unsupported log format %q", formatStr)
+	}
+
+	return slog.New(handler), nil
+}
+
+// preparePayload normalises raw user input, validating JSON when applicable.
 func preparePayload(raw string) ([]byte, bool, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -235,5 +277,6 @@ func printHelp() {
 	fmt.Println("  jobs                     - List all tracked jobs")
 	fmt.Println("  help                     - Display this help message")
 	fmt.Println("  exit                     - Quit the CLI")
+	fmt.Println("Flags (pass before commands): -log-format=text|json, -log-level=debug|info|warn|error")
 	fmt.Println("Payloads: provide plain strings or JSON (objects/arrays must be quoted in the shell)")
 }

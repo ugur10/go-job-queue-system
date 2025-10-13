@@ -14,6 +14,7 @@ A compact job queue written in Go to showcase core backend patterns: safe concur
 2. Start the CLI (interactive mode): `go run .`
 3. Submit a one-off job without the REPL: `go run . submit print "hello world"`
 4. Send structured data: `go run . submit print '{"subject":"welcome","user":"ugur"}'`
+5. Switch logging modes: `go run . -log-format=json -log-level=debug submit print "hello"`
 
 ## Architecture Overview
 - `queue/` – job model, in-memory queue, and worker pool implementation.
@@ -50,3 +51,5 @@ Exiting...
 ```
 
 Available job types are defined under `examples/` and can be expanded with your own handlers.
+
+Pass `-log-format=json` or `-log-level=debug` in front of commands when you need different verbosity or machine-readable logs.
