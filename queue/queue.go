@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"errors"
+	"sort"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -65,12 +66,12 @@ func (q *Queue) Submit(ctx context.Context, jobType string, payload []byte) (*Jo
 		MaxAttempts: q.maxTrials,
 		CreatedAt:   now,
 		UpdatedAt:   now,
+		ReadyAt:     now,
 	}
 
 	q.mu.Lock()
 	q.jobs[id] = job
-	q.pending = append(q.pending, job)
-	q.signalLocked()
+	q.enqueueLocked(job)
 	q.mu.Unlock()
 
 	clone := job.clone()
@@ -79,10 +80,32 @@ func (q *Queue) Submit(ctx context.Context, jobType string, payload []byte) (*Jo
 
 // Reserve retrieves the next pending job, blocking until one is available or ctx ends.
 func (q *Queue) Reserve(ctx context.Context) (*Job, error) {
+	var timer *time.Timer
 	for {
 		q.mu.Lock()
 		if len(q.pending) > 0 {
 			job := q.pending[0]
+			now := time.Now()
+			if job.ReadyAt.After(now) {
+				delay := job.ReadyAt.Sub(now)
+				wait := q.notifyCh
+				stopTimer(&timer)
+				timer = time.NewTimer(delay)
+				q.mu.Unlock()
+
+				select {
+				case <-ctx.Done():
+					stopTimer(&timer)
+					return nil, ctx.Err()
+				case <-wait:
+					stopTimer(&timer)
+					continue
+				case <-timer.C:
+					stopTimer(&timer)
+					continue
+				}
+			}
+
 			q.pending[0] = nil
 			q.pending = q.pending[1:]
 
@@ -92,12 +115,16 @@ func (q *Queue) Reserve(ctx context.Context) (*Job, error) {
 
 			q.mu.Unlock()
 
+			stopTimer(&timer)
+
 			clone := job.clone()
 			return &clone, nil
 		}
 
 		wait := q.notifyCh
 		q.mu.Unlock()
+
+		stopTimer(&timer)
 
 		select {
 		case <-ctx.Done():
@@ -143,6 +170,29 @@ func (q *Queue) MarkFailed(jobID string, err error) (*Job, error) {
 	}
 	job.State = JobFailed
 	job.UpdatedAt = time.Now()
+
+	clone := job.clone()
+	return &clone, nil
+}
+
+// Requeue schedules the job for another attempt after the provided delay.
+func (q *Queue) Requeue(jobID string, delay time.Duration, lastErr error) (*Job, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	job, ok := q.jobs[jobID]
+	if !ok {
+		return nil, ErrJobNotFound
+	}
+
+	job.State = JobPending
+	job.UpdatedAt = time.Now()
+	job.ReadyAt = job.UpdatedAt.Add(delay)
+	if lastErr != nil {
+		job.LastError = lastErr.Error()
+	}
+
+	q.enqueueLocked(job)
 
 	clone := job.clone()
 	return &clone, nil
@@ -195,4 +245,28 @@ type Stats struct {
 func (q *Queue) signalLocked() {
 	close(q.notifyCh)
 	q.notifyCh = make(chan struct{})
+}
+
+func (q *Queue) enqueueLocked(job *Job) {
+	q.pending = append(q.pending, job)
+	sort.SliceStable(q.pending, func(i, j int) bool {
+		if q.pending[i].ReadyAt.Equal(q.pending[j].ReadyAt) {
+			return q.pending[i].ID < q.pending[j].ID
+		}
+		return q.pending[i].ReadyAt.Before(q.pending[j].ReadyAt)
+	})
+	q.signalLocked()
+}
+
+func stopTimer(timer **time.Timer) {
+	if *timer == nil {
+		return
+	}
+	if !(*timer).Stop() {
+		select {
+		case <-(*timer).C:
+		default:
+		}
+	}
+	*timer = nil
 }

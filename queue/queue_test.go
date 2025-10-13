@@ -171,3 +171,65 @@ func TestSubmitRequiresJobType(t *testing.T) {
 		t.Fatalf("expected error for missing job type")
 	}
 }
+
+func TestRequeueDelay(t *testing.T) {
+	q := NewQueue(Config{})
+
+	job, err := q.Submit(context.Background(), "retry", []byte("payload"))
+	if err != nil {
+		t.Fatalf("Submit failed: %v", err)
+	}
+
+	reserved, err := q.Reserve(context.Background())
+	if err != nil {
+		t.Fatalf("Reserve failed: %v", err)
+	}
+	if reserved.ID != job.ID {
+		t.Fatalf("expected job %s, got %s", job.ID, reserved.ID)
+	}
+
+	delay := 100 * time.Millisecond
+	if _, err := q.Requeue(job.ID, delay, errors.New("retry")); err != nil {
+		t.Fatalf("Requeue failed: %v", err)
+	}
+
+	stats := q.Stats()
+	if stats.Pending != 1 || stats.Processing != 0 || stats.Completed != 0 || stats.Failed != 0 {
+		t.Fatalf("unexpected stats after requeue: %+v", stats)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	type reserveResult struct {
+		job *Job
+		err error
+	}
+
+	results := make(chan reserveResult, 1)
+	go func() {
+		job, err := q.Reserve(ctx)
+		results <- reserveResult{job: job, err: err}
+	}()
+
+	select {
+	case res := <-results:
+		t.Fatalf("Reserve returned before delay: job=%+v err=%v", res.job, res.err)
+	case <-time.After(delay / 2):
+	}
+
+	select {
+	case res := <-results:
+		if res.err != nil {
+			t.Fatalf("Reserve returned error: %v", res.err)
+		}
+		if res.job.ID != job.ID {
+			t.Fatalf("expected job %s, got %s", job.ID, res.job.ID)
+		}
+		if res.job.Attempts != 2 {
+			t.Fatalf("expected second attempt, got %d", res.job.Attempts)
+		}
+	case <-time.After(delay + 200*time.Millisecond):
+		t.Fatalf("reserve did not return after delay")
+	}
+}

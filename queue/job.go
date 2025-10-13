@@ -28,6 +28,7 @@ type Job struct {
 	LastError   string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	ReadyAt     time.Time
 }
 
 // clone creates an immutable copy to hand out to callers.
@@ -45,5 +46,6 @@ func (j *Job) clone() Job {
 		LastError:   j.LastError,
 		CreatedAt:   j.CreatedAt,
 		UpdatedAt:   j.UpdatedAt,
+		ReadyAt:     j.ReadyAt,
 	}
 }
