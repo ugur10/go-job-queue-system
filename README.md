@@ -1,59 +1,124 @@
-# Job Queue Go
+# go-job-queue-system
 
-A compact job queue written in Go to showcase core backend patterns: safe concurrency, worker orchestration, and graceful shutdowns. It relies only on the standard library and keeps everything in-memory so the behaviour is easy to inspect.
+An in-memory job queue implemented with Go's standard library. The project focuses on concurrency primitives, worker orchestration, retry policies, and graceful shutdown—all without external dependencies.
 
-## What It Demonstrates
-- Concurrency primitives (`context`, goroutines, channels, `sync`) for coordinating work.
-- Worker pool with exponential backoff retries and capped attempts.
-- Structured logging with `log/slog` around worker lifecycle events.
-- Clean separation between queue mechanics, worker coordination, and CLI wiring.
-- Unit tests covering queue behaviours, scheduling delays, and worker retry logic.
+---
 
-## Quick Start
-1. Run the tests: `go test ./...`
-2. Start the CLI (interactive mode): `go run .`
-3. Submit a one-off job without the REPL: `go run . submit print "hello world"`
-4. Send structured data: `go run . submit print '{"subject":"welcome","user":"ugur"}'`
-5. Switch logging modes: `go run . -log-format=json -log-level=debug submit print "hello"`
+## Quick Links
+- [Highlights](#highlights)
+- [Architecture Overview](#architecture-overview)
+- [Getting Started](#getting-started)
+- [CLI Usage](#cli-usage)
+- [Commands](#commands)
+- [Logging Options](#logging-options)
+- [Examples](#examples)
+- [Testing](#testing)
+- [Project Layout](#project-layout)
+- [License](#license)
+
+---
+
+## Highlights
+- Worker pool with configurable concurrency, retry attempts, and exponential backoff.
+- Thread-safe queue storing jobs, metadata, and state transitions in memory.
+- Context-driven cancellation and graceful shutdown using `signal.NotifyContext`.
+- Structured logging with `log/slog` for lifecycle visibility.
+- Extensible handler registry showcasing print and flaky demo jobs.
 
 ## Architecture Overview
-- `queue/` – job model, in-memory queue, and worker pool implementation.
-- `examples/` – sample handlers demonstrating logging and transient failures.
-- `main.go` – CLI harness that wires the queue, workers, and example handlers together.
+- **Workers** pull jobs from the queue, mark state transitions, and execute registered handlers.
+- **Scheduler** applies retry policies (max attempts + exponential delay) for transient failures.
+- **Queue** maintains pending, processing, completed, and failed lists with `sync.RWMutex`.
+- **CLI** wires everything together, allowing interactive commands or single-shot invocations.
 
-## Example Usage
+---
+
+## Getting Started
+```bash
+git clone https://github.com/ugur10/go-job-queue-system.git
+cd go-job-queue-system
+go run .
+```
+
+The CLI starts an interactive REPL by default. Type `help` to see available commands.
+
+Run a one-off command without entering the REPL:
+```bash
+go run . submit print "hello world"
+```
+
+---
+
+## CLI Usage
 ```
 $ go run .
-time=2024-10-01T12:00:00Z level=INFO msg="worker started" component=worker_pool worker_id=0
-time=2024-10-01T12:00:00Z level=INFO msg="worker started" component=worker_pool worker_id=1
+worker started (id=0)
+worker started (id=1)
 Job queue CLI ready. Commands: submit <type> <payload>, status, jobs, help, exit
 > submit print hello queue
 enqueued job 1 (type=print)
-time=2024-10-01T12:00:01Z level=INFO msg="processing job" component=worker_pool job_id=1 job_type=print attempt=1 max_attempts=3 worker_id=0
 [print] job 1 payload="hello queue"
-time=2024-10-01T12:00:01Z level=INFO msg="job completed" component=worker_pool job_id=1 job_type=print attempt=1 worker_id=0
 job 1 finished with state=completed attempts=1
-> submit print '{"subject":"hello","user":"ugur"}'
-payload parsed as JSON
-enqueued job 2 (type=print)
-time=2024-10-01T12:00:02Z level=INFO msg="processing job" component=worker_pool job_id=2 job_type=print attempt=1 max_attempts=3 worker_id=1
-[print] job 2 json_payload=
-{
-  "subject": "hello",
-  "user": "ugur"
-}
-time=2024-10-01T12:00:02Z level=INFO msg="job completed" component=worker_pool job_id=2 job_type=print attempt=1 worker_id=1
-job 2 finished with state=completed attempts=1
 > status
-Queue stats - pending:0 processing:0 completed:2 failed:0
+Queue stats - pending:0 processing:0 completed:1 failed:0
 > exit
 Exiting...
 ```
 
-Available job types are defined under `examples/` and can be expanded with your own handlers.
+### Commands
+| Command | Description |
+| ------- | ----------- |
+| `submit <type> <payload>` | Enqueue a job with the specified handler type and payload (plain text or JSON). |
+| `status` | Display queue statistics (pending, processing, completed, failed). |
+| `jobs` | List recent jobs with state, attempts, and timestamps. |
+| `help` | Show command usage. |
+| `exit` | Stop the CLI and trigger graceful shutdown. |
 
-Pass `-log-format=json` or `-log-level=debug` in front of commands when you need different verbosity or machine-readable logs.
+Handlers live in [`examples/`](examples) and can be extended with additional job types.
+
+---
+
+## Logging Options
+Use flags in front of commands to control output:
+```bash
+# JSON logs with debug verbosity
+go run . -log-format=json -log-level=debug submit print "hello"
+
+# Default text logs at info level
+go run . submit print '{"subject":"welcome","user":"ugur"}'
+```
+
+Log lines include worker IDs, job metadata, attempts, and retry delays to simplify debugging.
+
+---
+
+## Examples
+The [`examples/`](examples) package includes:
+- `print` — echoes payloads (text or JSON) to stdout.
+- `flaky` — simulates transient failures to exercise backoff and retries.
+
+Register your own handlers by extending the map in `main.go`.
+
+---
+
+## Testing
+Run the full suite:
+```bash
+go test ./...
+```
+
+Tests cover queue operations, scheduling behaviour, and worker retry logic.
+
+---
+
+## Project Layout
+```
+examples/      # Sample job handlers
+queue/         # Queue model, scheduler, worker pool
+main.go        # CLI wiring, signal handling, logging setup
+```
+
+---
 
 ## License
-
-Released under the [MIT License](https://opensource.org/licenses/MIT). See `LICENSE` for full text.
+Distributed under the [MIT License](LICENSE).
